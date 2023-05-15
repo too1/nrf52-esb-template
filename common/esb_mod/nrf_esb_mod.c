@@ -543,6 +543,10 @@ static bool rx_fifo_push_rfbuf(uint8_t pipe, uint8_t pid)
         m_rx_fifo.p_payload[m_rx_fifo.entry_point]->rssi  = NRF_RADIO->RSSISAMPLE;
         m_rx_fifo.p_payload[m_rx_fifo.entry_point]->pid   = pid;
         m_rx_fifo.p_payload[m_rx_fifo.entry_point]->noack = !(m_rx_payload_buffer[1] & 0x01);
+#if(NRF_ESB_TIMESTAMP_ENABLED == 1)
+        nrf_esb_timestamp_t ts = NRF_ESB_TIMESTAMP_TIMER->CC[0];
+        m_rx_fifo.p_payload[m_rx_fifo.entry_point]->timestamp = ts;  
+#endif
         if (++m_rx_fifo.entry_point >= NRF_ESB_RX_FIFO_SIZE)
         {
             m_rx_fifo.entry_point = 0;
@@ -564,6 +568,18 @@ static void sys_timer_init()
     NRF_ESB_SYS_TIMER->SHORTS    = TIMER_SHORTS_COMPARE1_CLEAR_Msk | TIMER_SHORTS_COMPARE1_STOP_Msk;
 }
 
+#if(NRF_ESB_TIMESTAMP_ENABLED == 1)
+static void timestamp_timer_init()
+{
+    // Configure the system timer with a 1 MHz base frequency
+    NRF_ESB_TIMESTAMP_TIMER->PRESCALER   = 4;
+    NRF_ESB_TIMESTAMP_TIMER->BITMODE     = TIMER_BITMODE_BITMODE_32Bit;
+    NRF_ESB_TIMESTAMP_TIMER->SHORTS      = 0;
+    NRF_ESB_TIMESTAMP_TIMER->TASKS_START = 1;
+}
+#endif
+
+
 
 static void ppi_init()
 {
@@ -578,6 +594,12 @@ static void ppi_init()
 
     NRF_PPI->CH[NRF_ESB_PPI_TX_START].EEP    = (uint32_t)&NRF_ESB_SYS_TIMER->EVENTS_COMPARE[1];
     NRF_PPI->CH[NRF_ESB_PPI_TX_START].TEP    = (uint32_t)&NRF_RADIO->TASKS_TXEN;
+
+#if(NRF_ESB_TIMESTAMP_ENABLED == 1)
+    // Additional PPI channels if using the timestamp feature
+    NRF_PPI->CH[NRF_ESB_PPI_TIMESTAMP].EEP = (uint32_t)&NRF_RADIO->EVENTS_ADDRESS;
+    NRF_PPI->CH[NRF_ESB_PPI_TIMESTAMP].TEP = (uint32_t)&NRF_ESB_TIMESTAMP_TIMER->TASKS_CAPTURE[0];
+#endif
 }
 
 
@@ -653,7 +675,20 @@ static void start_tx_transaction()
     NRF_RADIO->EVENTS_DISABLED = 0;
 
     DEBUG_PIN_SET(DEBUGPIN4);
+
+#if(NRF_ESB_TIMESTAMP_ENABLED == 1)
+    CRITICAL_REGION_ENTER();
     NRF_RADIO->TASKS_TXEN  = 1;
+    NRF_ESB_TIMESTAMP_TIMER->TASKS_CAPTURE[0] = 1;
+    CRITICAL_REGION_EXIT();
+    // Get the latest timestamp from the timer
+    nrf_esb_timestamp_t ts = NRF_ESB_TIMESTAMP_TIMER->CC[0];
+    // Copy the timestamp into the first bytes of the payload.
+    // Any existing data here will be overwritten
+    memcpy(&m_tx_payload_buffer[2], (void *)&ts, sizeof(ts));
+#else
+    NRF_RADIO->TASKS_TXEN  = 1;
+#endif
 }
 
 
@@ -1030,6 +1065,10 @@ uint32_t nrf_esb_init(nrf_esb_config_t const * p_config)
 
     sys_timer_init();
 
+#if(NRF_ESB_TIMESTAMP_ENABLED == 1)
+    timestamp_timer_init();
+#endif
+
     ppi_init();
 
     NVIC_SetPriority(RADIO_IRQn, m_config_local.radio_irq_priority & ESB_IRQ_PRIORITY_MSK);
@@ -1221,6 +1260,9 @@ uint32_t nrf_esb_read_rx_payload(nrf_esb_payload_t * p_payload)
     p_payload->rssi   = m_rx_fifo.p_payload[m_rx_fifo.exit_point]->rssi;
     p_payload->pid    = m_rx_fifo.p_payload[m_rx_fifo.exit_point]->pid;
     p_payload->noack  = m_rx_fifo.p_payload[m_rx_fifo.exit_point]->noack;
+#if(NRF_ESB_TIMESTAMP_ENABLED == 1)
+    p_payload->timestamp = m_rx_fifo.p_payload[m_rx_fifo.exit_point]->timestamp;
+#endif
     memcpy(p_payload->data, m_rx_fifo.p_payload[m_rx_fifo.exit_point]->data, p_payload->length);
 
     if (++m_rx_fifo.exit_point >= NRF_ESB_RX_FIFO_SIZE)
@@ -1273,6 +1315,10 @@ uint32_t nrf_esb_start_rx(void)
     NRF_RADIO->EVENTS_ADDRESS = 0;
     NRF_RADIO->EVENTS_PAYLOAD = 0;
     NRF_RADIO->EVENTS_DISABLED = 0;
+
+#if(NRF_ESB_TIMESTAMP_ENABLED == 1)
+    NRF_PPI->CHENSET = (1 << NRF_ESB_PPI_TIMESTAMP);
+#endif
 
     NRF_RADIO->TASKS_RXEN  = 1;
 

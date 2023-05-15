@@ -96,13 +96,19 @@ extern "C" {
 // 252 is the largest possible payload size according to the nRF5 architecture.
 STATIC_ASSERT(NRF_ESB_MAX_PAYLOAD_LENGTH <= 252);
 
+#define     NRF_ESB_TIMESTAMP_ENABLED           1
+
 #define     NRF_ESB_SYS_TIMER                   NRF_TIMER2          //!< The timer that is used by the module.
 #define     NRF_ESB_SYS_TIMER_IRQ_Handler       TIMER2_IRQHandler   //!< The handler that is used by @ref NRF_ESB_SYS_TIMER.
+
+#define     NRF_ESB_TIMESTAMP_TIMER             NRF_TIMER4
+#define     NRF_ESB_TIMESTAMP_TIMER_IRQHandler  TIMER4_IRQHandler
 
 #define     NRF_ESB_PPI_TIMER_START             10                  //!< The PPI channel used for starting the timer.
 #define     NRF_ESB_PPI_TIMER_STOP              11                  //!< The PPI channel used for stopping the timer.
 #define     NRF_ESB_PPI_RX_TIMEOUT              12                  //!< The PPI channel used for RX time-out.
 #define     NRF_ESB_PPI_TX_START                13                  //!< The PPI channel used for starting TX.
+#define     NRF_ESB_PPI_TIMESTAMP               14
 
 #ifndef NRF_ESB_PIPE_COUNT
 #define     NRF_ESB_PIPE_COUNT                  8                   //!< The maximum number of pipes allowed in the API, can be used if you need to restrict the number of pipes used. Must be 8 or lower because of architectural limitations.
@@ -290,6 +296,9 @@ typedef enum
     NRF_ESB_EVENT_RX_RECEIVED   /**< Event triggered on RX received.    */
 } nrf_esb_evt_id_t;
 
+#if(NRF_ESB_TIMESTAMP_ENABLED == 1)
+typedef uint32_t nrf_esb_timestamp_t;
+#endif
 
 /**@brief Enhanced ShockBurst payload.
  *
@@ -304,6 +313,9 @@ typedef struct
     uint8_t noack;                                  //!< Flag indicating that this packet will not be acknowledgement. Flag is ignored when selective auto ack is enabled.
     uint8_t pid;                                    //!< PID assigned during communication.
     uint8_t data[NRF_ESB_MAX_PAYLOAD_LENGTH];       //!< The payload data.
+#if(NRF_ESB_TIMESTAMP_ENABLED == 1)
+    nrf_esb_timestamp_t timestamp;
+#endif
 } nrf_esb_payload_t;
 
 
@@ -313,7 +325,6 @@ typedef struct
     nrf_esb_evt_id_t    evt_id;                     //!< Enhanced ShockBurst event ID.
     uint32_t            tx_attempts;                //!< Number of TX retransmission attempts.
 } nrf_esb_evt_t;
-
 
 /**@brief Definition of the event handler for the module. */
 typedef void (* nrf_esb_event_handler_t)(nrf_esb_evt_t const * p_event);

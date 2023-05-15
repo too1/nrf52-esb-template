@@ -82,6 +82,9 @@ void nrf_esb_event_handler(nrf_esb_evt_t const * p_event)
 
                 NRF_LOG_DEBUG("Receiving packet: %02x", rx_payload.data[1]);
             }
+            nrf_esb_timestamp_t ts;
+            memcpy(&ts, &rx_payload.data[0], sizeof(ts));
+            NRF_LOG_INFO("Timestamp from TX: %i\tLocal timestamp: %i", ts, rx_payload.timestamp);
             break;
     }
 }
