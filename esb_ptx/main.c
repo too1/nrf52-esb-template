@@ -42,7 +42,7 @@
 #include <string.h>
 #include "sdk_common.h"
 #include "nrf.h"
-#include "nrf_esb.h"
+#include "nrf_esb_mod.h"
 #include "nrf_error.h"
 #include "nrf_esb_error_codes.h"
 #include "nrf_delay.h"
